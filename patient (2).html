@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Aquable — Patient App</title>
+
+<!-- Firebase v8 compat CDN -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<style>
+  :root{
+    --bg:#071b22;
+    --panel:#0e2a34;
+    --panel-2:#123540;
+    --line:#1d4653;
+    --aqua:#25c3c9;
+    --aqua-soft:#7fe3e6;
+    --ink:#eafcff;
+    --muted:#8fb4bd;
+    --ok:#2fbf71;
+    --warn:#f6b93b;
+    --crit:#ff5964;
+    --shadow:0 18px 40px -18px rgba(0,0,0,.7);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:radial-gradient(120% 80% at 50% -10%, #0d323d 0%, var(--bg) 55%) fixed;
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex;justify-content:center;
+    padding:18px 14px 40px;
+    min-height:100vh;
+    transition:background .4s;
+  }
+  .phone{width:100%;max-width:430px;}
+
+  /* header */
+  .top{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+  .logo{
+    width:44px;height:44px;border-radius:14px;flex:0 0 auto;
+    background:linear-gradient(150deg,var(--aqua),#1a8b90);
+    display:grid;place-items:center;box-shadow:var(--shadow);
+  }
+  .logo svg{width:26px;height:26px;}
+  .brand h1{font-size:19px;margin:0;letter-spacing:.3px;}
+  .brand p{margin:2px 0 0;font-size:12px;color:var(--muted);}
+  .role-pill{
+    margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.6px;
+    text-transform:uppercase;color:var(--aqua-soft);
+    border:1px solid var(--line);border-radius:999px;padding:5px 11px;
+    background:rgba(37,195,201,.08);
+  }
+
+  /* connection strip */
+  .conn{
+    display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:9px 12px;margin-bottom:16px;
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:0 0 auto;}
+  .dot.live{background:var(--ok);box-shadow:0 0 0 4px rgba(47,191,113,.18);}
+  .dot.off{background:var(--crit);box-shadow:0 0 0 4px rgba(255,89,100,.18);}
+  .conn b{color:var(--ink);font-weight:600;}
+
+  /* status card */
+  .status{
+    border-radius:20px;padding:20px;margin-bottom:16px;
+    border:1px solid var(--line);background:var(--panel);
+    box-shadow:var(--shadow);position:relative;overflow:hidden;
+    transition:background .4s,border-color .4s;
+  }
+  .status .label{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);}
+  .status .level{font-size:28px;font-weight:800;margin:6px 0 2px;letter-spacing:.3px;}
+  .status .sub{font-size:13.5px;color:var(--muted);line-height:1.45;}
+  .status.ok{background:linear-gradient(160deg,#0f2e38,#0e2a34);border-color:#1e5a4a;}
+  .status.ok .level{color:var(--ok);}
+  .status.warning{background:linear-gradient(160deg,#33290d,#20220f);border-color:#6b571a;}
+  .status.warning .level{color:var(--warn);}
+  .status.critical{background:linear-gradient(160deg,#3a1114,#25191b);border-color:#7a2830;color:var(--ink);}
+  .status.critical .level{color:var(--crit);}
+  .status.critical{animation:pulse 1.1s ease-in-out infinite;}
+  .status.disconnected{background:linear-gradient(160deg,#2a2a2a,#1c1c1c);border-color:#4a4a4a;}
+  .status.disconnected .level{color:var(--muted);}
+  @keyframes pulse{50%{box-shadow:0 0 0 3px rgba(255,89,100,.35),var(--shadow);}}
+
+  /* sensor grid */
+  .grid-title{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin:0 2px 10px;}
+  .sensors{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
+  .cell{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;}
+  .cell .k{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
+  .cell .k svg{width:16px;height:16px;opacity:.9;flex:0 0 auto;}
+  .cell .v{font-size:22px;font-weight:800;margin-top:8px;font-variant-numeric:tabular-nums;}
+  .cell .v small{font-size:12px;font-weight:600;color:var(--muted);margin-left:3px;}
+
+  /* controls */
+  .controls{display:flex;flex-direction:column;gap:11px;}
+  button{
+    font-family:inherit;font-size:16px;font-weight:700;border:none;cursor:pointer;
+    border-radius:16px;padding:16px;color:var(--ink);letter-spacing:.3px;
+    transition:transform .08s ease, filter .15s ease;
+  }
+  button:active{transform:scale(.98);}
+  .btn-alert{background:linear-gradient(150deg,#ff6b74,#d63644);box-shadow:0 14px 30px -12px rgba(214,54,68,.8);}
+  .btn-reset{background:var(--panel-2);border:1px solid var(--line);color:var(--aqua-soft);font-size:14px;padding:13px;}
+
+  .hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.5;}
+  .toast{
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
+    background:#0b232b;border:1px solid var(--line);color:var(--ink);
+    padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;
+    transition:.28s;box-shadow:var(--shadow);z-index:20;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body id="body">
+<div class="phone">
+
+  <div class="top">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5S5 10 5 14.5a7 7 0 0 0 14 0C19 10 12 2.5 12 2.5Z" fill="#052024"/><path d="M12 2.5S5 10 5 14.5a7 7 0 0 0 14 0C19 10 12 2.5 12 2.5Z" stroke="#eafcff" stroke-width="1.4"/><path d="M9 15a3 3 0 0 0 3 3" stroke="#7fe3e6" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </div>
+    <div class="brand">
+      <h1>Aquable</h1>
+      <p>Patient App — simulated wearable</p>
+    </div>
+    <span class="role-pill">Patient</span>
+  </div>
+
+  <div class="conn">
+    <span id="dot" class="dot"></span>
+    <span id="connLine">Connecting to Firebase…</span>
+  </div>
+
+  <div id="statusBanner" class="status ok">
+    <div class="label">Hydration status</div>
+    <div class="level" id="levelText">Normal</div>
+    <div class="sub" id="levelSub">All simulated readings are within range.</div>
+  </div>
+
+  <p class="grid-title">Live sensor readings</p>
+  <div class="sensors">
+    <div class="cell">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h3l2-6 4 12 2.5-7 1.5 1H21" stroke="#7fe3e6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Pulse · PPG</div>
+      <div class="v"><span id="valPulse">--</span><small>bpm</small></div>
+    </div>
+    <div class="cell">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4v9" stroke="#7fe3e6" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="16.5" r="3" stroke="#7fe3e6" stroke-width="1.6"/></svg>Temperature</div>
+      <div class="v"><span id="valTemp">--</span><small>°C</small></div>
+    </div>
+    <div class="cell">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none"><path d="M13 3 5 13h5l-1 8 8-11h-5l1-7Z" stroke="#7fe3e6" stroke-width="1.6" stroke-linejoin="round"/></svg>Skin Cond. · EDA</div>
+      <div class="v"><span id="valEda">--</span><small>µS</small></div>
+    </div>
+    <div class="cell">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12c2.5-3 5-3 8 0s5.5 3 8 0" stroke="#7fe3e6" stroke-width="1.6" stroke-linecap="round"/><path d="M4 16c2.5-3 5-3 8 0s5.5 3 8 0" stroke="#3f7a83" stroke-width="1.6" stroke-linecap="round"/></svg>Tissue Fluid · BIA</div>
+      <div class="v"><span id="valBia">--</span><small>%</small></div>
+    </div>
+    <div class="cell">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none"><path d="M4 18 9 9l4 6 3-5 4 8" stroke="#7fe3e6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Motion Stability</div>
+      <div class="v"><span id="valMotion">--</span></div>
+    </div>
+    <div class="cell">
+      <div class="k"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="#7fe3e6" stroke-width="1.6"/><path d="M12 8v4l3 2" stroke="#7fe3e6" stroke-width="1.6" stroke-linecap="round"/></svg>Last Update</div>
+      <div class="v" style="font-size:15px;"><span id="valTime">--</span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="forceBtn" class="btn-alert">⚠ Force Alert (Demo)</button>
+    <button id="resetBtn" class="btn-reset">Reset to Normal</button>
+  </div>
+
+  <p class="hint">This phone emulates the patient's wearable. Readings stream to the caregiver continuously — the red button forces a critical event for the demo.</p>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ======= TODO: paste your Firebase config here (Firebase Console > Project Settings > Web app) =======
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const dataRef = db.ref("/aquable_demo/patient1");
+
+// Thresholds (simple, no algorithm — per assignment instructions)
+const THRESH = {
+  pulse: { warn: 100, crit: 120 },     // bpm above this
+  eda:   { warn: 12,  crit: 18 },      // µS above this
+  bia:   { warn: 42,  crit: 38 },      // % below this (lower = more dehydrated)
+  temp:  { warn: 37.8, crit: 38.5 },   // °C above this
+};
+
+let forced = false;
+let readings = { pulse: 72, eda: 4, bia: 55, temp: 36.8, motion: 95 };
+
+function randomWalk(v, step, min, max) {
+  let nv = v + (Math.random() * 2 - 1) * step;
+  return Math.max(min, Math.min(max, nv));
+}
+
+function simulateStep() {
+  readings.pulse = randomWalk(readings.pulse, 3, 60, 130);
+  readings.eda   = randomWalk(readings.eda, 1, 2, 20);
+  readings.bia   = randomWalk(readings.bia, 1, 35, 60);
+  readings.temp  = randomWalk(readings.temp, 0.15, 36.2, 39);
+  readings.motion= randomWalk(readings.motion, 4, 40, 100);
+}
+
+function computeRisk() {
+  if (forced) return "critical";
+  let level = "normal";
+  if (readings.pulse > THRESH.pulse.warn || readings.eda > THRESH.eda.warn ||
+      readings.bia < THRESH.bia.warn || readings.temp > THRESH.temp.warn) {
+    level = "warning";
+  }
+  if (readings.pulse > THRESH.pulse.crit || readings.eda > THRESH.eda.crit ||
+      readings.bia < THRESH.bia.crit || readings.temp > THRESH.temp.crit) {
+    level = "critical";
+  }
+  return level;
+}
+
+const LEVEL_TEXT = {
+  normal:   ["Normal", "All simulated readings are within range."],
+  warning:  ["⚠ Warning", "One or more readings are elevated — monitor closely."],
+  critical: ["🔴 Critical — Dehydration Risk", "Threshold breached. Caregiver has been alerted."]
+};
+
+function render(level) {
+  const banner = document.getElementById("statusBanner");
+  banner.className = "status " + level;
+  document.getElementById("levelText").textContent = LEVEL_TEXT[level][0];
+  document.getElementById("levelSub").textContent = LEVEL_TEXT[level][1];
+
+  document.getElementById("valPulse").textContent = readings.pulse.toFixed(0);
+  document.getElementById("valEda").textContent = readings.eda.toFixed(1);
+  document.getElementById("valBia").textContent = readings.bia.toFixed(1);
+  document.getElementById("valTemp").textContent = readings.temp.toFixed(1);
+  document.getElementById("valMotion").textContent = readings.motion.toFixed(0);
+  document.getElementById("valTime").textContent = new Date().toLocaleTimeString();
+}
+
+function pushToFirebase(level) {
+  dataRef.set({
+    pulse: Number(readings.pulse.toFixed(1)),
+    eda: Number(readings.eda.toFixed(1)),
+    bia: Number(readings.bia.toFixed(1)),
+    temperature: Number(readings.temp.toFixed(1)),
+    motion: Number(readings.motion.toFixed(1)),
+    riskLevel: level,
+    forced: forced,
+    lastUpdate: firebase.database.ServerValue.TIMESTAMP
+  }).catch((err) => console.error("Firebase write failed:", err));
+}
+
+function tick() {
+  simulateStep();
+  const level = computeRisk();
+  render(level);
+  pushToFirebase(level);
+}
+
+function toast(m) {
+  const t = document.getElementById("toast");
+  t.textContent = m;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1900);
+}
+
+document.getElementById("forceBtn").addEventListener("click", () => {
+  forced = true;
+  tick();
+  toast("Critical alert sent to caregiver");
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  forced = false;
+  readings = { pulse: 72, eda: 4, bia: 55, temp: 36.8, motion: 95 };
+  tick();
+  toast("Reset to normal");
+});
+
+// Connection status (FR11)
+const dot = document.getElementById("dot");
+const connLine = document.getElementById("connLine");
+db.ref(".info/connected").on("value", (snap) => {
+  if (snap.val() === true) {
+    dot.className = "dot live";
+    connLine.innerHTML = "<b>Connected</b>";
+  } else {
+    dot.className = "dot off";
+    connLine.textContent = "Disconnected — data is not syncing to caregiver";
+    document.getElementById("statusBanner").className = "status disconnected";
+  }
+});
+
+tick();
+setInterval(tick, 4000);
+</script>
+</body>
+</html>
