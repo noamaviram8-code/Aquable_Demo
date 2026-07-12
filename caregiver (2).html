@@ -138,14 +138,15 @@
 <script>
 // ======= TODO: paste your Firebase config here (must match patient.html) =======
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAcywDIHrj5-0oHIj_iMlANJVl19j09EQ8",
+  authDomain: "aquable-demo.firebaseapp.com",
+  databaseURL: "https://aquable-demo-default-rtdb.firebaseio.com",
+  projectId: "aquable-demo",
+  storageBucket: "aquable-demo.firebasestorage.app",
+  messagingSenderId: "870208106370",
+  appId: "1:870208106370:web:ea3d0874059b283d9d699b"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const dataRef = db.ref("/aquable_demo/patient1");
