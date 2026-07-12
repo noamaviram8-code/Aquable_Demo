@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aquable — Patient App</title>
+<style>
+  :root {
+    --normal: #2c6e49;
+    --warning: #b8860b;
+    --critical: #b00020;
+    --disconnected: #6b6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #f4f6f8;
+    color: #1a1a1a;
+    transition: background-color 0.3s ease;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  body.state-normal   { background: #e8f5ec; }
+  body.state-warning  { background: #fff6e0; }
+  body.state-critical { background: var(--critical); color: #fff; }
+  body.state-disconnected { background: #e6e6e6; }
+
+  header {
+    padding: 18px 16px 6px;
+    text-align: center;
+  }
+  header h1 { font-size: 20px; margin: 0 0 2px; }
+  header p  { margin: 0; font-size: 13px; opacity: 0.75; }
+
+  .status-banner {
+    margin: 10px 16px;
+    padding: 14px;
+    border-radius: 12px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--normal);
+  }
+  .status-banner.warning { background: var(--warning); }
+  .status-banner.critical { background: var(--critical); }
+  .status-banner.disconnected { background: var(--disconnected); }
+
+  .readings {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 10px 16px;
+  }
+  .card {
+    background: rgba(255,255,255,0.85);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+  body.state-critical .card { background: rgba(255,255,255,0.15); }
+  .card .label { font-size: 12px; opacity: 0.75; margin-bottom: 4px; }
+  .card .value { font-size: 22px; font-weight: 700; }
+
+  .controls {
+    padding: 14px 16px 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  button {
+    padding: 16px;
+    font-size: 17px;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .force-btn { background: var(--critical); color: #fff; }
+  .reset-btn { background: #fff; color: #1a1a1a; border: 2px solid #ccc; }
+
+  .conn-line {
+    text-align: center;
+    font-size: 12px;
+    padding-bottom: 8px;
+    opacity: 0.7;
+  }
+</style>
+</head>
+<body id="body">
+
+<header>
+  <h1>Aquable — Patient App</h1>
+  <p>Simulated wearable (demo mode — no real sensors)</p>
+</header>
+
+<div id="statusBanner" class="status-banner">Normal</div>
+
+<div class="readings">
+  <div class="card"><div class="label">Pulse (bpm)</div><div class="value" id="valPulse">--</div></div>
+  <div class="card"><div class="label">Skin Conductance (µS)</div><div class="value" id="valEda">--</div></div>
+  <div class="card"><div class="label">Tissue Fluid (%)</div><div class="value" id="valBia">--</div></div>
+  <div class="card"><div class="label">Temperature (°C)</div><div class="value" id="valTemp">--</div></div>
+  <div class="card"><div class="label">Motion Stability</div><div class="value" id="valMotion">--</div></div>
+  <div class="card"><div class="label">Last Update</div><div class="value" id="valTime" style="font-size:14px;">--</div></div>
+</div>
+
+<div class="controls">
+  <button class="force-btn" id="forceBtn">⚠ Force Alert (Demo)</button>
+  <button class="reset-btn" id="resetBtn">Reset to Normal</button>
+</div>
+
+<div class="conn-line" id="connLine">Connecting to Firebase…</div>
+
+<!-- Firebase v8 compat CDN -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script>
+// ======= TODO: paste your Firebase config here (Firebase Console > Project Settings > Web app) =======
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const dataRef = db.ref("/aquable_demo/patient1");
+
+// Thresholds (simple, no algorithm — per assignment instructions)
+const THRESH = {
+  pulse: { warn: 100, crit: 120 },     // bpm above this
+  eda:   { warn: 12,  crit: 18 },      // µS above this
+  bia:   { warn: 42,  crit: 38 },      // % below this (lower = more dehydrated)
+  temp:  { warn: 37.8, crit: 38.5 },   // °C above this
+};
+
+let forced = false;
+let readings = { pulse: 72, eda: 4, bia: 55, temp: 36.8, motion: 95 };
+
+function randomWalk(v, step, min, max) {
+  let nv = v + (Math.random() * 2 - 1) * step;
+  return Math.max(min, Math.min(max, nv));
+}
+
+function simulateStep() {
+  readings.pulse = randomWalk(readings.pulse, 3, 60, 130);
+  readings.eda   = randomWalk(readings.eda, 1, 2, 20);
+  readings.bia   = randomWalk(readings.bia, 1, 35, 60);
+  readings.temp  = randomWalk(readings.temp, 0.15, 36.2, 39);
+  readings.motion= randomWalk(readings.motion, 4, 40, 100);
+}
+
+function computeRisk() {
+  if (forced) return "critical";
+  let level = "normal";
+  if (readings.pulse > THRESH.pulse.warn || readings.eda > THRESH.eda.warn ||
+      readings.bia < THRESH.bia.warn || readings.temp > THRESH.temp.warn) {
+    level = "warning";
+  }
+  if (readings.pulse > THRESH.pulse.crit || readings.eda > THRESH.eda.crit ||
+      readings.bia < THRESH.bia.crit || readings.temp > THRESH.temp.crit) {
+    level = "critical";
+  }
+  return level;
+}
+
+function render(level) {
+  const body = document.getElementById("body");
+  body.className = "state-" + level;
+  const banner = document.getElementById("statusBanner");
+  banner.className = "status-banner " + level;
+  banner.textContent = level === "normal" ? "Normal" : level === "warning" ? "⚠ Warning" : "🔴 Critical — Dehydration Risk";
+
+  document.getElementById("valPulse").textContent = readings.pulse.toFixed(0);
+  document.getElementById("valEda").textContent = readings.eda.toFixed(1);
+  document.getElementById("valBia").textContent = readings.bia.toFixed(1);
+  document.getElementById("valTemp").textContent = readings.temp.toFixed(1);
+  document.getElementById("valMotion").textContent = readings.motion.toFixed(0);
+  document.getElementById("valTime").textContent = new Date().toLocaleTimeString();
+}
+
+function pushToFirebase(level) {
+  dataRef.set({
+    pulse: Number(readings.pulse.toFixed(1)),
+    eda: Number(readings.eda.toFixed(1)),
+    bia: Number(readings.bia.toFixed(1)),
+    temperature: Number(readings.temp.toFixed(1)),
+    motion: Number(readings.motion.toFixed(1)),
+    riskLevel: level,
+    forced: forced,
+    lastUpdate: firebase.database.ServerValue.TIMESTAMP
+  }).catch((err) => console.error("Firebase write failed:", err));
+}
+
+function tick() {
+  simulateStep();
+  const level = computeRisk();
+  render(level);
+  pushToFirebase(level);
+}
+
+document.getElementById("forceBtn").addEventListener("click", () => {
+  forced = true;
+  tick();
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  forced = false;
+  readings = { pulse: 72, eda: 4, bia: 55, temp: 36.8, motion: 95 };
+  tick();
+});
+
+// Connection status (FR11)
+const connLine = document.getElementById("connLine");
+db.ref(".info/connected").on("value", (snap) => {
+  if (snap.val() === true) {
+    connLine.textContent = "Connected";
+  } else {
+    connLine.textContent = "Disconnected — data is not syncing to caregiver";
+  }
+});
+
+tick();
+setInterval(tick, 4000);
+</script>
+</body>
+</html>

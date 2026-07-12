@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aquable — Caregiver App</title>
+<style>
+  :root {
+    --normal: #2c6e49;
+    --warning: #b8860b;
+    --critical: #b00020;
+    --disconnected: #595959;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    color: #fff;
+    background: var(--normal);
+    transition: background-color 0.4s ease;
+  }
+  body.state-normal   { background: var(--normal); }
+  body.state-warning  { background: var(--warning); }
+  body.state-critical { background: var(--critical); }
+  body.state-disconnected { background: var(--disconnected); }
+
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 32px 40px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header { display: flex; justify-content: space-between; align-items: baseline; }
+  header h1 { font-size: 26px; margin: 0; }
+  header .conn { font-size: 14px; opacity: 0.85; }
+
+  .banner {
+    margin-top: 18px;
+    padding: 28px;
+    border-radius: 18px;
+    background: rgba(0,0,0,0.18);
+    text-align: center;
+  }
+  .banner .risk-text { font-size: 40px; font-weight: 800; letter-spacing: 0.5px; }
+  .banner .sub { font-size: 15px; opacity: 0.85; margin-top: 6px; }
+
+  .grid {
+    margin-top: 26px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+  }
+  .card {
+    background: rgba(255,255,255,0.16);
+    border-radius: 14px;
+    padding: 18px 10px;
+    text-align: center;
+  }
+  .card .label { font-size: 13px; opacity: 0.85; margin-bottom: 8px; }
+  .card .value { font-size: 30px; font-weight: 700; }
+
+  .footer {
+    margin-top: auto;
+    padding-top: 24px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    opacity: 0.9;
+  }
+
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body id="body">
+<div class="wrap">
+  <header>
+    <h1>Aquable — Caregiver Dashboard</h1>
+    <div class="conn" id="connLine">Connecting…</div>
+  </header>
+
+  <div class="banner">
+    <div class="risk-text" id="riskText">Waiting for data…</div>
+    <div class="sub" id="riskSub">No readings received yet</div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Pulse (bpm)</div><div class="value" id="valPulse">--</div></div>
+    <div class="card"><div class="label">Skin Conductance (µS)</div><div class="value" id="valEda">--</div></div>
+    <div class="card"><div class="label">Tissue Fluid (%)</div><div class="value" id="valBia">--</div></div>
+    <div class="card"><div class="label">Temperature (°C)</div><div class="value" id="valTemp">--</div></div>
+    <div class="card"><div class="label">Motion Stability</div><div class="value" id="valMotion">--</div></div>
+  </div>
+
+  <div class="footer">
+    <div>Patient: 1 (demo)</div>
+    <div id="lastUpdate">Last update: --</div>
+  </div>
+</div>
+
+<!-- Firebase v8 compat CDN -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script>
+// ======= TODO: paste your Firebase config here (must match patient.html) =======
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const dataRef = db.ref("/aquable_demo/patient1");
+
+const body = document.getElementById("body");
+const riskText = document.getElementById("riskText");
+const riskSub = document.getElementById("riskSub");
+const connLine = document.getElementById("connLine");
+const lastUpdateEl = document.getElementById("lastUpdate");
+
+let isConnected = true;
+let lastData = null;
+
+function applyState(level) {
+  body.className = "state-" + (isConnected ? level : "disconnected");
+}
+
+function renderData(data) {
+  lastData = data;
+  document.getElementById("valPulse").textContent = data.pulse ?? "--";
+  document.getElementById("valEda").textContent = data.eda ?? "--";
+  document.getElementById("valBia").textContent = data.bia ?? "--";
+  document.getElementById("valTemp").textContent = data.temperature ?? "--";
+  document.getElementById("valMotion").textContent = data.motion ?? "--";
+
+  const level = data.riskLevel || "normal";
+  if (isConnected) {
+    if (level === "normal") {
+      riskText.textContent = "✅ Normal";
+      riskSub.textContent = "No dehydration risk detected";
+    } else if (level === "warning") {
+      riskText.textContent = "⚠ Warning";
+      riskSub.textContent = "Elevated readings — keep an eye on the patient";
+    } else {
+      riskText.textContent = "🔴 CRITICAL — Dehydration Risk";
+      riskSub.textContent = data.forced ? "Alert manually triggered (demo)" : "Threshold breached — contact patient now";
+    }
+    applyState(level);
+  }
+
+  const ts = data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : "--";
+  lastUpdateEl.textContent = "Last update: " + ts;
+}
+
+function renderDisconnected() {
+  riskText.textContent = "🔌 Disconnected";
+  riskSub.textContent = "Connection to patient app lost — last known reading shown below";
+  applyState(lastData ? (lastData.riskLevel || "normal") : "normal");
+}
+
+// FR11/FR12: connection state handling
+db.ref(".info/connected").on("value", (snap) => {
+  isConnected = snap.val() === true;
+  if (isConnected) {
+    connLine.textContent = "🟢 Connected";
+    if (lastData) renderData(lastData);
+  } else {
+    connLine.textContent = "🔌 Disconnected";
+    renderDisconnected();
+  }
+});
+
+dataRef.on("value", (snapshot) => {
+  const data = snapshot.val();
+  if (data && isConnected) {
+    renderData(data);
+  }
+});
+</script>
+</body>
+</html>
